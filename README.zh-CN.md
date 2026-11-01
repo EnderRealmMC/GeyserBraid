@@ -49,6 +49,19 @@ bedrock:
     advertise-addresses: ["mc.enderrealm.cn:35132"]
 ```
 
+### frp 场景
+
+frp 本质就是一个端口映射由你自己控制的 NAT——配方完全相同：同一个 `remote_port`
+建两条 frp 代理（一条 `tcp` 走信令、一条 `udp` 走游戏数据），都指向内网 `19132`，
+`advertise-addresses` 填 VPS 地址加远程端口。
+
+要保住真实玩家地址，给两条 frp 代理都开
+`transport.proxyProtocolVersion = "v2"`，并把 frp 客户端来源地址（通常是
+`127.0.0.1`）加进 `advanced.bedrock` 的 `haproxy-protocol-whitelisted-ips`。
+分流器会自动挂载到 RakNet 的 PROXY 处理器之后；信令读取转发的真实地址，再由
+Geyser 原有的 IP 转发链带到 Java 端。不开 PROXY protocol 也能连通，但所有玩家
+都会显示为 frp 客户端的地址。
+
 | 模块 | 职责 |
 |------|------|
 | `demux` | RFC 7983 首字节分类器 + 挂载在每条 RakNet 监听通道管线最前的 Netty 处理器 |

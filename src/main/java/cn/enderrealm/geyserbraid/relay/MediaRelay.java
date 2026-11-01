@@ -12,6 +12,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFactory;
 import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoop;
@@ -21,6 +22,7 @@ import io.netty.channel.socket.SocketProtocolFamily;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.buffer.ByteBuf;
+import org.cloudburstmc.netty.handler.codec.raknet.server.RakProxyServerHandler;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 
@@ -105,19 +107,26 @@ public final class MediaRelay {
      * skip the handler straight into RakNet's arms — so the mount is submitted to
      * the event loop and awaited.</p>
      *
-     * <p>Caveat: with RakNet's PROXY protocol enabled, the demultiplexer should
-     * sit after the proxy handler so the sender is the real client (and replies
-     * get mapped back to the proxy). Locating that handler by type is deferred
-     * until first verified against Geyser's pipeline; until then the handler is
-     * mounted first unconditionally, and the PROXY protocol + shared-port
-     * combination is not yet supported.</p>
+     * <p>Position: when RakNet's PROXY protocol handling is on (a non-empty
+     * {@code haproxy-protocol-whitelisted-ips}, say for an frp or HAProxy front),
+     * the demultiplexer is mounted right after {@code rak-proxy-server-handler} so
+     * it classifies the stripped payload and sees the physical sender — which is
+     * the transport return path anyway: legs are keyed on it and replies are
+     * written back to it, so an frp tunnel simply becomes part of the round trip.
+     * Without PROXY handling the demultiplexer is mounted first, unchanged.</p>
      *
      * @param listener a bound RakNet listener channel
      */
     public void attach(Channel listener) {
         Runnable mount = () -> {
             ChannelPipeline pipeline = listener.pipeline();
-            if (pipeline.get(DemuxHandler.NAME) == null) {
+            if (pipeline.get(DemuxHandler.NAME) != null) {
+                return;
+            }
+            ChannelHandlerContext proxy = pipeline.context(RakProxyServerHandler.class);
+            if (proxy != null) {
+                pipeline.addAfter(proxy.name(), DemuxHandler.NAME, new DemuxHandler(this, listener));
+            } else {
                 pipeline.addFirst(DemuxHandler.NAME, new DemuxHandler(this, listener));
             }
         };

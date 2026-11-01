@@ -53,6 +53,21 @@ bedrock:
     advertise-addresses: ["mc.enderrealm.cn:35132"]
 ```
 
+### Behind frp
+
+frp is just a NAT whose port mapping you control — the same recipe applies. Run
+two frp proxies on the same `remote_port` (one `tcp` for signaling, one `udp`
+for game traffic), both pointing at the internal `19132`, and set
+`advertise-addresses` to the VPS address plus the remote port.
+
+To keep real player addresses, also set `transport.proxyProtocolVersion = "v2"`
+on both frp proxies and put the frp client's address (usually `127.0.0.1`) into
+`haproxy-protocol-whitelisted-ips` under `advanced.bedrock`. The demultiplexer
+then mounts behind RakNet's PROXY handler automatically; the signaling reads the
+forwarded address, and from there the usual Geyser IP forwarding carries it to
+the Java server. Without PROXY protocol everything still connects, but every
+player appears under the frp client's address.
+
 | Module | Responsibility |
 |--------|----------------|
 | `demux` | RFC 7983 first-byte classifier + the Netty handler mounted at the head of every RakNet listener pipeline |
