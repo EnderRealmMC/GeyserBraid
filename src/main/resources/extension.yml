@@ -1,0 +1,6 @@
+id: geyser-braid
+name: GeyserBraid
+main: cn.enderrealm.geyserbraid.GeyserBraidExtension
+api: 2.12.1
+version: 0.1.0-SNAPSHOT
+authors: [EnderRealmMC]
