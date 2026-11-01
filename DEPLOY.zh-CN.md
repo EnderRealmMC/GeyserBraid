@@ -27,6 +27,10 @@
 
 把 jar 放入 Geyser 平台配置目录下的 `extensions/` 文件夹：
 
+> CI 产物（Artifacts）里的快照 jar 安装方式相同，但它是对构建当天的
+> Geyser `2.12.1-SNAPSHOT` 编译的——需与服务器上的 Geyser 构建版本对齐，
+> 生产环境建议使用带标签的 Release 版。
+
 | 平台 | 扩展目录 |
 |---|---|
 | BungeeCord | `plugins/Geyser-BungeeCord/extensions/` |

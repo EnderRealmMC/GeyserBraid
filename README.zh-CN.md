@@ -13,7 +13,8 @@ GeyserBraid 是一个**非官方**的 [Geyser](https://github.com/GeyserMC/Geyse
 >
 > 🚧 **非常早期阶段**（0.1.0-SNAPSHOT）：已在单一部署上完成生产验证（Geyser
 > `2.12.1-b1280`）——两种传输（RakNet 与 NetherNet）确认在共享端口上并行工作，
-> 26.60 客户端经中继以 NetherNet 成功加入。接口与行为可能随时破坏性变更。
+> 26.60 客户端经中继以 NetherNet 进入游戏实测通过。接口与行为可能随时破坏性
+> 变更。
 >
 > 📖 完整研究链与生产验证记录见 [RESEARCH.zh-CN.md](RESEARCH.zh-CN.md)。
 
@@ -108,6 +109,9 @@ NXS 信令模式不在支持范围：其候选由外部服务管理。
 ./gradlew build
 # 产物：build/libs/GeyserBraid-<version>.jar
 ```
+
+CI 在每次 push 与每周定时构建——快照 jar 在 Actions 页（Build 运行 → Artifacts）
+下载；正式版本随 `v*` 标签发布并挂 Release。
 
 ## 许可证
 

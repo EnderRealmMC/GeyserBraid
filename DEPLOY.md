@@ -31,6 +31,10 @@
 Drop the jar into the `extensions/` folder inside the Geyser platform config
 directory:
 
+> Snapshot jars from CI Artifacts install identically, but they are compiled
+> against the Geyser `2.12.1-SNAPSHOT` of their build day — match the Geyser
+> build on the server, or prefer tagged releases for production.
+
 | Platform | Extensions folder |
 |---|---|
 | BungeeCord | `plugins/Geyser-BungeeCord/extensions/` |

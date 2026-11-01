@@ -14,8 +14,8 @@ no second UDP port for NetherNet, and no new configuration options.
 > 🚧 **Early stage** (0.1.0-SNAPSHOT): verified in production on a single
 > deployment against a single Geyser build (`2.12.1-b1280`) — both transports
 > (RakNet and NetherNet) confirmed working on the shared port, including a
-> 26.60 client joining over NetherNet through the relay. Expect breaking
-> changes.
+> 26.60 client joining and playing over NetherNet through the relay. Expect
+> breaking changes.
 >
 > 📖 Full research chain and production verification notes (Chinese):
 > [RESEARCH.zh-CN.md](RESEARCH.zh-CN.md).
@@ -119,6 +119,9 @@ Full step-by-step guide: [DEPLOY.md](DEPLOY.md) / [DEPLOY.zh-CN.md](DEPLOY.zh-CN
 ./gradlew build
 # artifact: build/libs/GeyserBraid-<version>.jar
 ```
+
+CI builds on every push and weekly — snapshot jars live under the Actions tab
+(Build runs → Artifacts); formal releases are attached to `v*` tags.
 
 ## License
 

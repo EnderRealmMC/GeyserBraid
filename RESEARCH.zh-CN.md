@@ -112,9 +112,8 @@ STUN 发现结果，回退本机网卡地址）写入信令实例的 volatile �
 18:02:22  [/127.0.0.1:0] <-> InitialHandler has connected
 ```
 
-ICE connected → SCTP connected → 玩家抵达 BungeeCord 登录处理器，
-**登录阶段验证通过**（后端服务器列表当时为空，进入游戏一步由代理的既有逻辑
-拒绝，与本扩展无关）。整条链路：
+ICE connected → SCTP connected → 玩家抵达 BungeeCord 登录处理器 → 进入游戏。
+**26.60 客户端进游戏实测完成**（RakNet 共存的 `both` 模式下进行）。整条链路：
 
 ```
 客户端(26.60, 外网) → <公网地址>:35132 → 服务商 NAT → 内网 19132/UDP
@@ -123,7 +122,7 @@ ICE connected → SCTP connected → 玩家抵达 BungeeCord 登录处理器，
 应答原路返回，源端口始终为 35132。
 ```
 
-**结论：UDP 单端口双传输在生产环境验证通过。**
+**结论：UDP 单端口双传输在生产环境验证通过，26.60 客户端已进入游戏实测。**
 
 **回归验证**：RakNet 客户端先行测试，结论无异常——分流器对非 STUN/DTLS 流量
 原样放行，两种传输在同一 UDP 端口上并行工作，互不干扰。

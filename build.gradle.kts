@@ -3,7 +3,9 @@ plugins {
 }
 
 group = "cn.enderrealm"
-version = "0.1.0-SNAPSHOT"
+
+// 发布时由 CI 从标签注入（tag v0.1.0 -> buildVersion=0.1.0），开发态默认快照版本
+version = (findProperty("buildVersion") as String?) ?: "0.1.0-SNAPSHOT"
 
 java {
     toolchain {

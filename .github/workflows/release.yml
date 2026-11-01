@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Version metadata
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Semver prerelease marker: a hyphen suffix (e.g. v0.1.0-rc.1)
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build
+        run: ./gradlew build --no-daemon -PbuildVersion=${{ steps.meta.outputs.version }}
+      - name: Extract changelog for the tag
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" {flag = 1; next}
+            flag && $0 ~ "^## \\[" {exit}
+            flag {print}
+          ' CHANGELOG.md > RELEASE_BODY.md
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/GeyserBraid-*.jar
+          body_path: RELEASE_BODY.md
+          generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
