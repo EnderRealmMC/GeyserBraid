@@ -10,6 +10,13 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Set this secret in the repo settings to enable Modrinth publishing;
+      # without it, the Modrinth step below skips itself
+      MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+      # Optional override: space-separated game versions. Left empty, the list
+      # is inferred from the Modrinth dependency on Geyser (see mc-publish step)
+      MODRINTH_GAME_VERSIONS: ${{ vars.MODRINTH_GAME_VERSIONS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -45,3 +52,21 @@ jobs:
           body_path: RELEASE_BODY.md
           generate_release_notes: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
+      - name: Publish to Modrinth
+        if: env.MODRINTH_TOKEN != ''
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: geyserbraid
+          modrinth-token: ${{ env.MODRINTH_TOKEN }}
+          files: build/libs/GeyserBraid-*.jar
+          name: GeyserBraid ${{ steps.meta.outputs.version }}
+          version: ${{ steps.meta.outputs.version }}
+          # -rc/-beta suffixes map to beta, -alpha to alpha, clean versions to release
+          version-type: ${{ steps.meta.outputs.prerelease == 'true' && 'beta' || 'release' }}
+          changelog-file: RELEASE_BODY.md
+          loaders: geyser
+          # game-versions follows Geyser itself via this dependency; the
+          # MODRINTH_GAME_VERSIONS variable overrides it when set
+          dependencies: |
+            modrinth:geyser:required
+          game-versions: ${{ env.MODRINTH_GAME_VERSIONS }}
