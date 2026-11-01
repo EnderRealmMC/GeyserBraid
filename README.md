@@ -24,24 +24,54 @@ into one port without modifying Geyser itself.
 public UDP port (e.g. 19132, held by the RakNet listener)
    │  RFC 7983 first-byte demultiplexing (STUN magic cookie / DTLS content type)
    ├── RakNet packets ──────────────► the untouched RakNet pipeline
-   └── STUN / DTLS packets ─► loopback leg ─► libjuice (bound on 127.0.0.1)
+   └── STUN / DTLS packets ─► loopback leg ─► libjuice (the existing ICE socket on webrtc-port)
                                           └─ replies written back through the RakNet
                                              socket, so the source port never changes
+```
+
+Candidates are pointed at the shared port by a mirror inside the extension: it
+writes the shared port onto Geyser's own dynamic addresses (the live STUN
+discovery results, or the host's interface addresses on a LAN) into the
+signaling's advertised list, which the library re-reads on every answer. No
+configuration, and it works on public hosts, behind NAT and on LAN-only test
+setups alike.
+
+### Configuration
+
+The zero-configuration path covers direct-IP hosts, standard NAT (public port
+equals the internal one) and LAN-only setups.
+
+One case needs a manual line: hosting panels that **remap the public port**
+(e.g. external `35132` forwards to internal `19132`). The mapping is
+unobservable from inside the machine — STUN can only reveal the mapping of the
+socket it probes — so point `advertise-addresses` under `bedrock.signaling` at
+the public endpoint, and the mirror steps aside automatically:
+
+```yaml
+bedrock:
+  signaling:
+    advertise-addresses: ["mc.enderrealm.cn:35132"]
 ```
 
 | Module | Responsibility |
 |--------|----------------|
 | `demux` | RFC 7983 first-byte classifier + the Netty handler mounted at the head of every RakNet listener pipeline |
-| `relay` | Per-client loopback forwarding legs, ufrag-gated, with idle sweeping and counters |
-| `signaling` | Signaling wrapper: offers lose their candidates, answers are rewritten to advertise the shared port |
-| `security` | The ufrag whitelist — only sessions the signaling actually answered may open a leg |
-| `integration` | Reflective wiring into Geyser internals (`RaknetServer` listener channels, `NetherNetServer` built-in signaling) — the only package to revisit on a Geyser upgrade |
+| `relay` | Per-client loopback forwarding legs to the existing ICE socket, with idle sweeping and counters |
+| `integration` | Reflective wiring into Geyser internals (the `RaknetServer` listener channels), the advertised-address mirror, and startup sanity checks — the only package to revisit on a Geyser upgrade |
 
 ## Requirements
 
 - Geyser **2.12.x** with `transport: both`
 - One public UDP port + one public TCP port (built-in signaling)
-- No additional configuration
+- No additional configuration (see [Configuration](#configuration) for the NAT port-remap case)
+
+## Status
+
+Tested against Geyser `2.12.1-b1280` (`git-master-64bb399`). The reflective
+surface is deliberately small — the `RaknetServer` listener channels and the
+built-in signaling's advertised list — and is the only code to revisit on a
+Geyser upgrade. The NXS signaling mode is out of scope: its candidates are
+managed by the external service.
 
 ## Building
 

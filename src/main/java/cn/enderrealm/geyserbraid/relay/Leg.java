@@ -9,6 +9,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.socket.DatagramPacket;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -69,8 +70,8 @@ public final class Leg {
         channel.write(payload);
     }
 
-    /** Flushes the leg channel; a no-op while the leg is not ready yet. */
-    void flush() {
+    /** Flushes the leg channel; a no-op while the leg is not ready yet. Called by the demultiplexer. */
+    public void flush() {
         if (ready) {
             channel.flush();
         }

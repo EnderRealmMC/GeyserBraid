@@ -8,8 +8,6 @@ package cn.enderrealm.geyserbraid.relay;
 import cn.enderrealm.geyserbraid.demux.DemuxHandler;
 import cn.enderrealm.geyserbraid.demux.PacketKind;
 import cn.enderrealm.geyserbraid.demux.Rfc7983;
-import cn.enderrealm.geyserbraid.security.UfragRegistry;
-import cn.enderrealm.geyserbraid.signaling.SharedPortSignaling;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFactory;
@@ -23,7 +21,6 @@ import io.netty.channel.socket.SocketProtocolFamily;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.buffer.ByteBuf;
-import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetHTTPServerSignaling;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 
@@ -38,7 +35,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.function.UnaryOperator;
 
 /**
  * The loopback media relay: the heart of the shared-port mode.
@@ -50,14 +46,19 @@ import java.util.function.UnaryOperator;
  * <ul>
  *     <li>the demultiplexer ({@code DemuxHandler}, mounted on every RakNet
  *         listener) hands STUN/DTLS datagrams to {@link #forward};</li>
- *     <li>the first STUN request of a session opens a per-client {@link Leg} — a
- *         loopback channel connected to libjuice's media endpoint — gated by the
- *         {@link UfragRegistry} whitelist;</li>
+ *     <li>the first well-formed STUN request of a session opens a per-client
+ *         {@link Leg} — a loopback channel connected to libjuice's media endpoint;</li>
  *     <li>replies coming back on a leg are written out through the listener
  *         channel ({@link #handleLegReply}), so the source port stays the shared
  *         public port and the client's 5-tuple never changes;</li>
- *     <li>a sweep task closes idle legs and expires stale ufrag credentials.</li>
+ *     <li>a sweep task closes idle legs.</li>
  * </ul>
+ *
+ * <p>The leg gate is deliberately shallow: a plausibility check on the STUN
+ * USERNAME (the ufrag registry of v1 needed to intercept signaling, which the
+ * library forbids after a close). Real credential enforcement happens inside
+ * libjuice — ICE short-term secrets — and leg limits plus the idle sweep bound
+ * what hostile scanning can hold open.</p>
  */
 public final class MediaRelay {
 
@@ -70,7 +71,6 @@ public final class MediaRelay {
 
     private final InetSocketAddress mediaEndpoint;
     private final int maxLegs;
-    private final UfragRegistry ufrags = new UfragRegistry();
 
     private final LongAdder legsOpened = new LongAdder();
     private final LongAdder packetsIn = new LongAdder();
@@ -135,30 +135,6 @@ public final class MediaRelay {
     }
 
     /**
-     * Wraps a signaling instance so offers lose their candidates (a loopback
-     * socket cannot reach them) and answers are rewritten to advertise the shared
-     * port; every answered session registers its local ufrag as a relay
-     * credential.
-     *
-     * @param delegate       the signaling instance built by Geyser
-     * @param answerRewriter applied to every answer SDP leaving the server
-     * @return the wrapped signaling for the re-built channel factory
-     */
-    public SharedPortSignaling decorate(NetherNetHTTPServerSignaling delegate, UnaryOperator<String> answerRewriter) {
-        return new SharedPortSignaling(this, delegate, answerRewriter);
-    }
-
-    /**
-     * Registers a local ufrag as a relay credential. Called by the signaling
-     * wrapper when an answer leaves.
-     *
-     * @param ufrag the local ice-ufrag of the answered session
-     */
-    public void expectUfrag(String ufrag) {
-        ufrags.expect(ufrag);
-    }
-
-    /**
      * @return the loopback address libjuice's ICE is bound on
      */
     public InetSocketAddress mediaEndpoint() {
@@ -196,8 +172,9 @@ public final class MediaRelay {
                 return;
             }
             String ufrag = Rfc7983.localUfrag(content);
-            if (ufrag == null || !ufrags.isExpected(ufrag)) {
-                // No credential, expired credential, or a forged request: never open a leg
+            if (ufrag == null || ufrag.length() < 4 || ufrag.length() > 255) {
+                // Not a plausible ICE check; libjuice enforces the real credentials
+                // (ICE short-term secrets) for whatever still gets through
                 rejectedUfrag.increment();
                 return;
             }
@@ -309,7 +286,6 @@ public final class MediaRelay {
                 leg.close();
             }
         }
-        ufrags.sweep();
     }
 
     /**
@@ -336,7 +312,6 @@ public final class MediaRelay {
         for (Leg leg : new ArrayList<>(legsByClient.values())) {
             leg.close();
         }
-        ufrags.clear();
     }
 
     /** The Geyser logger, shared by the relay and its legs. */

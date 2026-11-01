@@ -24,24 +24,48 @@ Geyser 的 `both` 模式同时运行两个监听器，但每个传输各自占�
 公网 UDP 端口（如 19132，由 RakNet 监听器持有）
    │  RFC 7983 首字节分流（STUN magic cookie / DTLS content type）
    ├── RakNet 包 ──────────────► 原有 RakNet 管线
-   └── STUN / DTLS 包 ─► 回环转发 leg ─► libjuice（绑定 127.0.0.1）
+   └── STUN / DTLS 包 ─► 回环转发 leg ─► libjuice（webrtc-port 上的现有 ICE socket，
+                                        经回环到达）
                                      └─ 应答经 RakNet 公网 socket 回写，
                                         源端口保持不变
+```
+
+候选地址由扩展内置的镜像机制指向共享端口：它把共享端口写到 Geyser 自己的动态地址上
+（实时的 STUN 发现结果，或内网环境下的本机网卡地址），注入信令的通告列表——库在
+每次应答时都会重新读取它。零配置，公网、NAT、纯内网测试三种环境同样成立。
+
+### 配置
+
+零配置路径覆盖：直连公网的主机、标准 NAT（外部端口与内部一致）、纯内网测试。
+
+只有一种场景需要手动配置一行：服务商面板**重映射了公网端口**（例如外部 `35132`
+转发到内部 `19132`）。这个映射关系从服务器内部原理上不可探测——STUN 只能探测到
+被探测 socket 自己的映射——所以把 `bedrock.signaling` 下的 `advertise-addresses`
+指向公网端点，镜像会自动让位：
+
+```yaml
+bedrock:
+  signaling:
+    advertise-addresses: ["mc.enderrealm.cn:35132"]
 ```
 
 | 模块 | 职责 |
 |------|------|
 | `demux` | RFC 7983 首字节分类器 + 挂载在每条 RakNet 监听通道管线最前的 Netty 处理器 |
-| `relay` | 每客户端回环转发 leg，凭 ufrag 白名单开启，带空闲回收与计数 |
-| `signaling` | 信令包装器：offer 剥掉候选，应答改写为通告共享端口 |
-| `security` | ufrag 白名单——只有信令真正应答过的会话才能开 leg |
-| `integration` | 对 Geyser 内部的反射集成（`RaknetServer` 监听通道、`NetherNetServer` 内置信令）——升级 Geyser 时唯一需要跟进的包 |
+| `relay` | 每客户端回环转发 leg，指向现有 ICE socket，带空闲回收与计数 |
+| `integration` | 对 Geyser 内部的反射集成（`RaknetServer` 监听通道）、通告地址镜像、启动自检——升级 Geyser 时唯一需要跟进的包 |
 
 ## 使用要求
 
 - Geyser **2.12.x**，`transport: both`
 - 一个公网 UDP 端口 + 一个公网 TCP 端口（内置信令）
-- 无需任何额外配置
+- 无需任何额外配置（NAT 端口重映射场景见[配置](#配置)一节）
+
+## 现状
+
+已在 Geyser `2.12.1-b1280`（`git-master-64bb399`）上实测。反射面刻意收得很小——
+`RaknetServer` 监听通道与内置信令的通告列表——升级 Geyser 时只需跟进这一处。
+NXS 信令模式不在支持范围：其候选由外部服务管理。
 
 ## 构建
 

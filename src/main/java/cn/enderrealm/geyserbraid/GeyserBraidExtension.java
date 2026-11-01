@@ -16,19 +16,21 @@ import org.geysermc.event.subscribe.Subscribe;
  * {@code transport: both} mode. RakNet and NetherNet share one public UDP port,
  * with no additional configuration options.
  *
- * <p>The project is organized into four modules, assembled by
+ * <p>The project is organized into three modules, assembled by
  * {@link BraidIntegrations#install()}:</p>
  *
  * <ul>
  *     <li>{@code demux} — the RFC 7983 first-byte demultiplexer, mounted at the head
  *         of every RakNet listener pipeline;</li>
  *     <li>{@code relay} — the loopback media relay, ferrying STUN/DTLS traffic to
- *         libjuice bound on a loopback address;</li>
- *     <li>{@code signaling} — the signaling wrapper and SDP rewriter, replacing
- *         loopback candidates with candidates on the shared public port;</li>
- *     <li>{@code integration} — reflective integration with Geyser internals
- *         (RakNet listener channels, the built-in NetherNet signaling).</li>
+ *         libjuice's ICE socket on the webrtc-port, reached over loopback;</li>
+ *     <li>{@code integration} — reflective wiring into Geyser internals
+ *         (the RakNet listener channels) plus startup sanity checks.</li>
  * </ul>
+ *
+ * <p>Client candidates are pointed at the shared port by Geyser's own
+ * {@code advertise-addresses} option, which natively honors {@code address:port}
+ * entries — no signaling interception is involved.</p>
  *
  * <p>The integration technique follows the precedent set by GeyserNetease: an
  * extension shell plus version-pinned integration into Geyser internals. All

@@ -7,16 +7,7 @@ package cn.enderrealm.geyserbraid.integration;
 
 import cn.enderrealm.geyserbraid.GeyserBraidExtension;
 import cn.enderrealm.geyserbraid.relay.MediaRelay;
-import cn.enderrealm.geyserbraid.signaling.SdpRewriter;
-import cn.enderrealm.geyserbraid.signaling.SharedPortSignaling;
-import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.EventLoopGroup;
-import org.cloudburstmc.netty.channel.nethernet.NetherNetChannelFactory;
-import org.cloudburstmc.netty.channel.nethernet.config.NetherChannelOption;
-import org.cloudburstmc.netty.channel.nethernet.signaling.NetherNetHTTPServerSignaling;
-import org.cloudburstmc.netty.util.nethernet.TrustedProxies;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 import org.geysermc.geyser.configuration.GeyserConfig;
@@ -27,26 +18,23 @@ import java.net.InetSocketAddress;
 import java.util.List;
 
 /**
- * The assembler: wires Braid's modules onto Geyser's already-running network
- * stack.
+ * The assembler: wires the demultiplexer and the media relay onto Geyser's
+ * already-running network stack.
  *
- * <p>Assembly runs after {@code GeyserPostInitializeEvent}, when Geyser's own
- * listeners are already bound. It does exactly three things:</p>
- *
- * <ol>
- *     <li>Fetches the RakNet listener channels via {@link RakNetListenerAccess}
- *         and mounts the demultiplexer on each of them;</li>
- *     <li>Reflects Geyser's built-in signaling instance out of
- *         {@code NetherNetServer}, wraps it via {@link MediaRelay#decorate}, and
- *         has {@link NetherNetRebinder} re-bind the listener on the same
- *         signaling port with ICE moved to a loopback address;</li>
- *     <li>Logs the assembled layout.</li>
- * </ol>
- *
- * <p>Every reflection failure ends in a clear "incompatible Geyser version"
- * error with nothing installed. A half-assembled state — demultiplexer mounted
- * but signaling not rebuilt, or the reverse — would break both transports and
- * is strictly worse than not assembling at all.</p>
+ * <p>The NetherNet signaling and its ICE socket are left completely untouched.
+ * v1 closed and re-bound the built-in signaling channel with a wrapped instance;
+ * the library refused a second bind of a signaling instance that the channel
+ * close had already marked closed ("Signaling cannot be bound again once
+ * closed"). Rather than duplicating Geyser's whole signaling construction
+ * (identity, HTTPS, MOTD provider, proxies), candidate rewriting is delegated to
+ * {@link AdvertisedMirror}: it mirrors the shared port onto Geyser's own dynamic
+ * addresses — the live STUN discovery results, or the host's own interfaces on a
+ * LAN — by writing the signaling's advertised list, which the library re-reads
+ * on every answer. Clients then send their ICE checks to the shared UDP port,
+ * where the demultiplexer hands them to the relay, which ferries them to the
+ * existing ICE socket on the webrtc-port (reachable over loopback). An operator
+ * who prefers static control can set "advertise-addresses" by hand and the
+ * mirror steps aside.</p>
  */
 public final class BraidIntegrations {
 
@@ -57,12 +45,11 @@ public final class BraidIntegrations {
     }
 
     /**
-     * Performs the full assembly. Any failed step aborts the remaining ones.
+     * Performs the assembly. Any failed step aborts the remaining ones.
      *
      * <p>Port semantics match Geyser's own startup resolution: a
      * {@code webrtc-port} of 0 follows the Bedrock port (valid when NetherNet
-     * owns the UDP side alone), and the signaling port has already been
-     * resolved to a concrete value by Geyser at startup.</p>
+     * owns the UDP side alone).</p>
      */
     public static void install() {
         GeyserImpl geyser = GeyserImpl.getInstance();
@@ -70,7 +57,6 @@ public final class BraidIntegrations {
         GeyserConfig.BedrockConfig bedrock = geyser.config().bedrock();
         int sharedPort = bedrock.port();
         int webrtcPort = bedrock.webrtcPort() == 0 ? sharedPort : bedrock.webrtcPort();
-        int signalingPort = bedrock.signaling().port();
 
         try {
             List<Channel> listeners = RakNetListenerAccess.listeners();
@@ -78,31 +64,63 @@ public final class BraidIntegrations {
                 throw new IllegalStateException("no bound RakNet listener channels to mount the demultiplexer on");
             }
 
-            // Hide libjuice's ICE on loopback: only relay legs can reach it, the public internet cannot
+            // Geyser's ICE socket stays bound on the Bedrock address at the webrtc-port;
+            // a wildcard bind includes the loopback, so relay legs can reach it there
             InetSocketAddress mediaEndpoint = new InetSocketAddress(InetAddress.getLoopbackAddress(), webrtcPort);
             MediaRelay relay = new MediaRelay(mediaEndpoint, MAX_LEGS);
             listeners.forEach(relay::attach);
 
-            // Wrap the signaling Geyser already built: strip offer candidates,
-            // rewrite answers, register local ufrags as relay credentials
-            NetherNetServer netherNetServer = NetherNetRebinder.netherNetServer();
-            NetherNetHTTPServerSignaling original =
-                    (NetherNetHTTPServerSignaling) ReflectAccess.getField(netherNetServer, "signaling");
-            SharedPortSignaling wrapped = relay.decorate(original,
-                    sdp -> SdpRewriter.rewriteAnswer(sdp, webrtcPort,
-                            SdpRewriter.publishedAddresses(bedrock.address()), sharedPort));
-
-            Channel channel = NetherNetRebinder.rebind(geyser, wrapped, mediaEndpoint, signalingPort);
+            checkNetherNetSide(logger);
+            if (bedrock.signaling().advertiseAddresses().isEmpty()) {
+                // Mirror the shared port onto Geyser's dynamic addresses (STUN discovery
+                // results, else the host's own interfaces) — zero configuration, works
+                // on public hosts, behind NAT and on LAN-only test setups alike
+                AdvertisedMirror.start(geyser, sharedPort);
+            } else {
+                logger.info(GeyserBraidExtension.LOG_PREFIX
+                        + "\"advertise-addresses\" is set manually; the advertised-address mirror stays off.");
+            }
 
             logger.info(GeyserBraidExtension.LOG_PREFIX + "Assembled: demultiplexer mounted on " + listeners.size()
-                    + " listener channel(s) (UDP " + sharedPort + "), built-in signaling re-bound (TCP "
-                    + signalingPort + "), ICE moved to " + mediaEndpoint + ", new channel " + channel.localAddress());
+                    + " listener channel(s) (UDP " + sharedPort + "), NetherNet media relayed to " + mediaEndpoint);
         } catch (Exception e) {
-            // A failed assembly means the single-port feature is unavailable as a whole;
-            // Geyser's original both-mode listeners keep working on separate ports
+            // A failed assembly leaves Geyser's original listeners untouched; the
+            // transports keep working in the vanilla dual-port layout
             logger.severe(GeyserBraidExtension.LOG_PREFIX
-                    + "Assembly failed, single-port dual transport is NOT enabled (Geyser's original listeners are "
-                    + "unaffected; you can fall back to separate ports): " + e.getMessage(), e);
+                    + "Assembly failed, single-port demultiplexing is NOT enabled (Geyser's original listeners are"
+                    + " unaffected): " + e.getMessage(), e);
         }
     }
+
+    /**
+     * Non-fatal sanity check: warns when neither the built-in signaling channel
+     * nor the NXS provider channel is active, since the relay would then have
+     * nothing to forward to. Reflection is confined here and is allowed to fail
+     * quietly on a future Geyser refactor.
+     */
+    private static void checkNetherNetSide(GeyserLogger logger) {
+        try {
+            Object value = ReflectAccess.getField(GeyserImpl.getInstance(), "netherNetServer");
+            if (value instanceof NetherNetServer server) {
+                Object inbuilt = ReflectAccess.getField(server, "inbuiltChannel");
+                Object provider = ReflectAccess.getField(server, "netherNetChannel");
+                boolean active = (inbuilt instanceof Channel builtinChannel && builtinChannel.isActive())
+                        || (provider instanceof Channel providerChannel && providerChannel.isActive());
+                if (!active) {
+                    logger.warning(GeyserBraidExtension.LOG_PREFIX
+                            + "No active NetherNet channel (neither built-in signaling nor the NXS provider);"
+                            + " the relay has nothing to forward to until one starts.");
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            logger.warning(GeyserBraidExtension.LOG_PREFIX
+                    + "Could not inspect Geyser's NetherNet state (harmless): " + e.getMessage());
+        }
+    }
+
+    /**
+     * The candidate rewrite towards the shared port is driven by Geyser's
+     * {@code advertise-addresses}; without it clients keep aiming at the
+     * webrtc-port and need both UDP ports open.
+     */
 }

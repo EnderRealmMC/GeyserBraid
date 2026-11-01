@@ -37,7 +37,7 @@ public final class DemuxHandler extends ChannelInboundHandlerAdapter {
      * @param relay    the owning relay, responsible for leg creation, forwarding and counters
      * @param listener the listener channel carrying this handler (the Netty entry of the UDP socket)
      */
-    DemuxHandler(MediaRelay relay, Channel listener) {
+    public DemuxHandler(MediaRelay relay, Channel listener) {
         this.relay = relay;
         this.listener = listener;
     }
