@@ -14,9 +14,6 @@ jobs:
       # Set this secret in the repo settings to enable Modrinth publishing;
       # without it, the Modrinth step below skips itself
       MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-      # Optional override: space-separated game versions. Left empty, the list
-      # is inferred from the Modrinth dependency on Geyser (see mc-publish step)
-      MODRINTH_GAME_VERSIONS: ${{ vars.MODRINTH_GAME_VERSIONS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,8 +29,10 @@ jobs:
           # Semver prerelease marker: a hyphen suffix (e.g. v0.1.0-rc.1)
           if [[ "$VERSION" == *-* ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "versionType=beta" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "versionType=release" >> "$GITHUB_OUTPUT"
           fi
       - name: Build
         run: ./gradlew build --no-daemon -PbuildVersion=${{ steps.meta.outputs.version }}
@@ -54,19 +53,34 @@ jobs:
           prerelease: ${{ steps.meta.outputs.prerelease }}
       - name: Publish to Modrinth
         if: env.MODRINTH_TOKEN != ''
-        uses: Kir-Antipov/mc-publish@v3.3
-        with:
-          modrinth-id: geyserbraid
-          modrinth-token: ${{ env.MODRINTH_TOKEN }}
-          files: build/libs/GeyserBraid-*.jar
-          name: GeyserBraid ${{ steps.meta.outputs.version }}
-          version: ${{ steps.meta.outputs.version }}
-          # -rc/-beta suffixes map to beta, -alpha to alpha, clean versions to release
-          version-type: ${{ steps.meta.outputs.prerelease == 'true' && 'beta' || 'release' }}
-          changelog-file: RELEASE_BODY.md
-          loaders: geyser
-          # game-versions follows Geyser itself via this dependency; the
-          # MODRINTH_GAME_VERSIONS variable overrides it when set
-          dependencies: |
-            modrinth:geyser:required
-          game-versions: ${{ env.MODRINTH_GAME_VERSIONS }}
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          JAR="$(ls build/libs/GeyserBraid-*.jar)"
+          # The draft project is invisible without the token; fetch its real id
+          PROJECT_ID="$(curl -sS -H "Authorization: ${{ env.MODRINTH_TOKEN }}" \
+            https://api.modrinth.com/v2/project/geyserbraid | jq -r .id)"
+          # Modrinth requires at least one game version; take the range Geyser
+          # itself declares so the list follows Geyser's support automatically
+          GAME_VERSIONS="$(curl -sS https://api.modrinth.com/v2/project/geyser/version | jq -c '.[0].game_versions')"
+          if [ -z "$GAME_VERSIONS" ] || [ "$GAME_VERSIONS" = "null" ]; then
+            GAME_VERSIONS='["1.21"]'
+          fi
+          # jq -Rs turns the changelog into a JSON string
+          cat > modrinth-version.json <<EOF
+          {
+            "name": "GeyserBraid ${VERSION}",
+            "version_number": "${VERSION}",
+            "changelog": $(jq -Rs . < RELEASE_BODY.md),
+            "game_versions": ${GAME_VERSIONS},
+            "version_type": "${{ steps.meta.outputs.versionType }}",
+            "loaders": ["geyser"],
+            "featured": false,
+            "dependencies": [],
+            "file_parts": ["file[0]"],
+            "project_id": "${PROJECT_ID}"
+          }
+          EOF
+          curl --fail-with-body -sS -H "Authorization: ${{ env.MODRINTH_TOKEN }}" \
+            -F "data=@modrinth-version.json;type=application/json" \
+            -F "file[0]=@${JAR}" \
+            https://api.modrinth.com/v2/version
