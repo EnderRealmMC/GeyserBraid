@@ -10,6 +10,15 @@ and NetherNet (WebRTC) traffic share one port, demultiplexed by the RFC 7983 fir
 no second UDP port for NetherNet, and no new configuration options.
 
 > ⚠️ Unofficial project, not affiliated with GeyserMC or CubeCraft.
+>
+> 🚧 **Early stage** (0.1.0-SNAPSHOT): verified in production on a single
+> deployment against a single Geyser build (`2.12.1-b1280`) — both transports
+> (RakNet and NetherNet) confirmed working on the shared port, including a
+> 26.60 client joining over NetherNet through the relay. Expect breaking
+> changes.
+>
+> 📖 Full research chain and production verification notes (Chinese):
+> [RESEARCH.zh-CN.md](RESEARCH.zh-CN.md).
 
 ## Why
 
