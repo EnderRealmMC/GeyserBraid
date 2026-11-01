@@ -86,6 +86,22 @@ Geyser 原有的 IP 转发链带到 Java 端。不开 PROXY protocol 也能连�
 `RaknetServer` 监听通道与内置信令的通告列表——升级 Geyser 时只需跟进这一处。
 NXS 信令模式不在支持范围：其候选由外部服务管理。
 
+## 已测试平台
+
+| 平台 | 状态 |
+|---|---|
+| BungeeCord（插件） | ✅ 生产验证（Geyser `2.12.1-b1280`） |
+| Spigot / Paper（插件） | 未测试——所挂载的接口位于 Geyser core，与平台无关 |
+| Velocity（插件） | 未测试——同上 |
+| Standalone | 未测试——同上 |
+| ViaProxy / mod 加载器（Fabric、NeoForge） | 未测试——同上 |
+
+## 部署
+
+构建后把 jar 放入 Geyser 的 `extensions/` 文件夹，设置 `transport: both` 与
+`webrtc-port`，重启后检查 `[GeyserBraid] Assembled:` 日志行。完整分步指南：
+[DEPLOY.zh-CN.md](DEPLOY.zh-CN.md) / [DEPLOY.md](DEPLOY.md)。
+
 ## 构建
 
 ```bash

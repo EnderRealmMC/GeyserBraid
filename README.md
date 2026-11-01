@@ -97,6 +97,22 @@ built-in signaling's advertised list — and is the only code to revisit on a
 Geyser upgrade. The NXS signaling mode is out of scope: its candidates are
 managed by the external service.
 
+## Tested platforms
+
+| Platform | Status |
+|---|---|
+| BungeeCord (plugin) | ✅ verified in production (Geyser `2.12.1-b1280`) |
+| Spigot / Paper (plugin) | untested — the hooked surface lives in Geyser core and is platform-independent |
+| Velocity (plugin) | untested — same note |
+| Standalone | untested — same note |
+| ViaProxy / mod loaders (Fabric, NeoForge) | untested — same note |
+
+## Deployment
+
+Build, drop the jar into the Geyser `extensions/` folder, set `transport: both`
+plus a `webrtc-port`, restart, and check the `[GeyserBraid] Assembled:` log line.
+Full step-by-step guide: [DEPLOY.md](DEPLOY.md) / [DEPLOY.zh-CN.md](DEPLOY.zh-CN.md).
+
 ## Building
 
 ```bash
