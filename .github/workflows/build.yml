@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   schedule:
     # Weekly build gate: catches SNAPSHOT dependency drift early
-    - cron: "0 3 * * 1"
+    - cron: "0 3 * * *"
 
 jobs:
   build:
