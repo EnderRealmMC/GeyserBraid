@@ -16,7 +16,11 @@
   DPI 用拦截页替答，客户端表现为 `Terracotta` 错误。规避：裸 IP 加入、为信令
   配置 HTTPS（`builtin.https`）、或完成备案。
 
-## 构建
+## 构建或下载
+
+从 [Releases 页面](https://github.com/EnderRealmMC/GeyserBraid/releases) 下载
+（同步发布至 [Modrinth](https://modrinth.com/project/geyserbraid)），或从源码
+构建：
 
 ```bash
 ./gradlew build
@@ -56,6 +60,12 @@ bedrock:
     advertise-addresses: ["mc.example.com:35132"]
 ```
 
+要在 Java 侧拿到真实玩家地址，还需设置
+`advanced.bedrock.webrtc-proxy-protocol-relays: ["127.0.0.1"]`——中继 leg 会
+为每个数据报前置携带玩家地址的 PROXY protocol v2 头，由 nethernet 库读取
+（替代中继的回环地址）。jar 与这行配置需成对更新，任一侧变更后请同步部署
+匹配的构建。
+
 重启宿主后，Geyser 日志应依次出现：
 
 ```
@@ -69,10 +79,12 @@ bedrock:
 
 ## 客户端验证
 
-1. **NetherNet**：26.60+ 客户端从公网地址加入——能进服即单端口闭环
+1. `/braid status`——装配状态、端口与镜像；`/braid list`——按传输分列的玩家
+   及其地址（启用上述帧化后，NetherNet 玩家显示真实地址）
+2. **NetherNet**：26.60+ 客户端从公网地址加入——能进服即单端口闭环
    （信令走 TCP，WebRTC 走共享 UDP 端口）。
-2. **RakNet 回归**：旧版客户端照常加入——分流器对其流量原样放行。
-3. **地址**：Java 端 `Player.getAddress()` 走 Geyser 原有转发链，与不装
+3. **RakNet 回归**：旧版客户端照常加入——分流器对其流量原样放行。
+4. **地址**：Java 端 `Player.getAddress()` 走 Geyser 原有转发链，与不装
    Braid 时一致。
 
 ## 常见问题

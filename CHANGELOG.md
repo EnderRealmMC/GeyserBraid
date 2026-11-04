@@ -9,6 +9,20 @@ semver. Formal releases are attached to `v*` tags (GitHub Release + Modrinth);
 
 (none)
 
+## [0.1.0-rc.2] - 2026-11-05
+
+### Added
+
+- `/braid` command tree: `status`, `list` (online players grouped by
+  transport), `legs`, `advertise`, `version` and `help` - operator status
+  and diagnostics for the single-port setup
+- Version single-sourcing: `extension.yml` and the jar manifest are injected
+  from the Gradle version, and the manifest carries the build's git commit
+- PROXY protocol v2 media framing: relay legs prepend the real player
+  address per datagram when `webrtc-proxy-protocol-relays` is configured -
+  player addresses then reach Geyser and the Java server instead of the
+  relay's loopback address
+
 ## [0.1.0-rc.1] - 2026-11-01
 
 First prerelease (release-flow shakedown). The feature set is what 0.1.0 ships:

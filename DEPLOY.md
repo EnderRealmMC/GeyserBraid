@@ -19,7 +19,11 @@
   clients then fail with `Terracotta`. Workarounds: join by raw IP, configure
   HTTPS signaling (`builtin.https`), or file the domain.
 
-## Build
+## Build or download
+
+Download from the [releases page](https://github.com/EnderRealmMC/GeyserBraid/releases)
+(also published to [Modrinth](https://modrinth.com/project/geyserbraid)), or
+build from source:
 
 ```bash
 ./gradlew build
@@ -61,6 +65,13 @@ For **port-remap hosts** (external port differs from the internal one, e.g.
     advertise-addresses: ["mc.example.com:35132"]
 ```
 
+For real player addresses on the Java side, also set
+`advanced.bedrock.webrtc-proxy-protocol-relays: ["127.0.0.1"]` - the relay legs
+then frame their datagrams with a PROXY protocol v2 header carrying the
+player's address, which the nethernet library reads instead of the relay's
+loopback address. The jar and this config line ship together; run a matching
+Braid build when you change either side.
+
 Restart the host. The Geyser log should show, in order:
 
 ```
@@ -72,12 +83,22 @@ Restart the host. The Geyser log should show, in order:
 (The third line is the mirror working; with a manual `advertise-addresses` it is
 replaced by the "mirror stays off" notice.)
 
+For real player addresses on the Java side, also set
+`advanced.bedrock.webrtc-proxy-protocol-relays: ["127.0.0.1"]` - the relay legs
+then frame their datagrams with a PROXY protocol v2 header carrying the
+player's address, which the nethernet library reads instead of the relay's
+loopback address. The jar and this config line ship together; run a matching
+Braid build when you change either side.
+
 ## Client verification
 
-1. **NetherNet**: join with a 26.60+ client on the public address — reaching the
+1. `/braid status` - ports and mirror state; `/braid list` - players grouped by
+   transport with their addresses (NetherNet players show their real address
+   with the framing above)
+1. **NetherNet**: join with a 26.60+ client on the public address - reaching the
    server closes the single-port loop (signaling over TCP, WebRTC over the
    shared UDP port).
-2. **RakNet regression**: legacy clients join as usual — the demultiplexer
+2. **RakNet regression**: legacy clients join as usual - the demultiplexer
    passes their traffic through untouched.
 3. **Addresses**: `Player.getAddress()` on the Java side follows the ordinary
    Geyser forwarding chain, as without Braid.

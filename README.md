@@ -97,6 +97,22 @@ built-in signaling's advertised list — and is the only code to revisit on a
 Geyser upgrade. The NXS signaling mode is out of scope: its candidates are
 managed by the external service.
 
+## Commands
+
+The extension registers a `/braid` root command:
+
+| Subcommand | Output |
+|---|---|
+| `status` | Assembly state, ports, mirror status, relay and media counters |
+| `list` | Online players grouped by transport (NetherNet / RakNet) |
+| `legs` | One line per open relay leg (client, idle time, readiness) |
+| `advertise` | The addresses currently advertised to joining clients |
+| `version` | Extension and Geyser build alignment |
+| `help` | The list above |
+
+Every subcommand sits behind `braid.command.<name>` (default: granted to
+nobody - grant it through your permission setup; the console always can).
+
 ## Tested platforms
 
 | Platform | Status |

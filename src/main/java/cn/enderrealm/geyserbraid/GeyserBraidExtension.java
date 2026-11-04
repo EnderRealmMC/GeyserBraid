@@ -48,9 +48,7 @@ public class GeyserBraidExtension implements Extension {
     public static final String LOG_PREFIX = "[GeyserBraid] ";
 
     /**
-     * The root command all of this extension's commands stem from. The default
-     * is the extension id ({@code geyser-braid}); overriding it keeps the tree
-     * short and free of a Geyser prefix.
+     * The root command all of this extension's commands stem from.
      */
     @Override
     public String rootCommand() {
