@@ -13,27 +13,9 @@ semver. Formal releases are attached to `v*` tags (GitHub Release + Modrinth);
 
 ### Fixed
 
-- NetherNet players no longer appear as the relay's loopback address
-  (127.0.0.1): relay legs frame their datagrams with a PROXY protocol v2
-  header carrying the player's real address, which the nethernet library
-  reads - so Geyser, and the Java server behind it, see the player instead of
-  the relay. Activated by `advanced.bedrock.webrtc-proxy-protocol-relays:
-  ["127.0.0.1"]`
-
-### Added
-
-- `/braid` command tree reworked to the framework's root-command shape:
-  `status`, `list` (players grouped by transport), `legs`, `advertise`,
-  `version` and the framework-provided `help` - each subcommand under its own
-  `braid.command.<name>` permission
-- frp/HAProxy fronts: the leg's PROXY header carries the player's address
-  resolved through the RakNet proxy mapping
-- `/braid version` includes the build's git commit
-
-### Changed
-
-- The extension version is single-sourced from the Gradle build (injected
-  into `extension.yml` and the jar manifest at build time)
+- frp/HAProxy fronts: the relay leg's PROXY header now carries the player's
+  address resolved through the RakNet proxy mapping, so the address reaching
+  Geyser is the player's, not the front's
 
 ## [0.1.0-rc.2] - 2026-11-05
 
@@ -42,12 +24,12 @@ semver. Formal releases are attached to `v*` tags (GitHub Release + Modrinth);
 - `/braid` command tree: `status`, `list` (online players grouped by
   transport), `legs`, `advertise`, `version` and `help` - operator status
   and diagnostics for the single-port setup
-- Version single-sourcing: `extension.yml` and the jar manifest are injected
-  from the Gradle version, and the manifest carries the build's git commit
 - PROXY protocol v2 media framing: relay legs prepend the real player
   address per datagram when `webrtc-proxy-protocol-relays` is configured -
   player addresses then reach Geyser and the Java server instead of the
   relay's loopback address
+- Version single-sourcing: `extension.yml` and the jar manifest are injected
+  from the Gradle version, and the manifest carries the build's git commit
 
 ## [0.1.0-rc.1] - 2026-11-01
 
