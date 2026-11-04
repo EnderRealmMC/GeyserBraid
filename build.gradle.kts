@@ -35,6 +35,26 @@ dependencies {
     compileOnly("dev.opencollab:libdatachannel-java-arch-detect:0.24.6.0-20261029.091642-10")
 }
 
+// The submodule build's short git commit, injected into the jar manifest
+val braidGitCommit: String = try {
+    providers.exec { commandLine("git", "rev-parse", "--short=8", "HEAD") }.standardOutput.asText.get().trim()
+} catch (e: Exception) {
+    "unknown"
+}
+
+// extension.yml and the jar manifest receive the Gradle version (single source of truth)
+tasks.processResources {
+    filesMatching("extension.yml") {
+        expand("version" to project.version.toString())
+    }
+}
+
+tasks.jar {
+    manifest {
+        attributes("Implementation-Version" to "$version (git-$braidGitCommit)")
+    }
+}
+
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
 }

@@ -5,9 +5,14 @@
 
 package cn.enderrealm.geyserbraid;
 
+import cn.enderrealm.geyserbraid.command.BraidCommand;
 import cn.enderrealm.geyserbraid.integration.BraidIntegrations;
+import org.geysermc.geyser.api.command.Command;
+import org.geysermc.geyser.api.event.lifecycle.GeyserDefineCommandsEvent;
 import org.geysermc.geyser.api.event.lifecycle.GeyserPostInitializeEvent;
+import org.geysermc.geyser.api.event.lifecycle.GeyserRegisterPermissionsEvent;
 import org.geysermc.geyser.api.extension.Extension;
+import org.geysermc.geyser.api.util.TriState;
 
 import org.geysermc.event.subscribe.Subscribe;
 
@@ -43,6 +48,16 @@ public class GeyserBraidExtension implements Extension {
     public static final String LOG_PREFIX = "[GeyserBraid] ";
 
     /**
+     * The root command all of this extension's commands stem from. The default
+     * is the extension id ({@code geyser-braid}); overriding it keeps the tree
+     * short and free of a Geyser prefix.
+     */
+    @Override
+    public String rootCommand() {
+        return "braid";
+    }
+
+    /**
      * Invoked once Geyser finishes initializing. By this point Geyser's own
      * listeners are already bound; Braid only attaches to existing network
      * objects, it never restarts them.
@@ -63,5 +78,58 @@ public class GeyserBraidExtension implements Extension {
             return;
         }
         BraidIntegrations.install();
+    }
+
+    /**
+     * Registers the /braid subcommands when Geyser defines its command set.
+     * Each subcommand stems from the root command and carries its own
+     * {@code braid.command.<name>} permission; the framework adds a help
+     * subcommand listing all of them automatically.
+     *
+     * @param event the command definition event
+     */
+    @Subscribe
+    public void onDefineCommands(GeyserDefineCommandsEvent event) {
+        event.register(subCommand("status", "Assembly state, mirror and relay summary",
+                (source, command, args) -> BraidCommand.status(source)));
+        event.register(subCommand("list", "Online players grouped by transport",
+                (source, command, args) -> BraidCommand.list(source)));
+        event.register(subCommand("legs", "One line per open relay leg",
+                (source, command, args) -> BraidCommand.legs(source)));
+        event.register(subCommand("advertise", "Addresses currently advertised to clients",
+                (source, command, args) -> BraidCommand.advertise(source)));
+        event.register(subCommand("version", "Extension and Geyser build alignment",
+                (source, command, args) -> BraidCommand.version(source)));
+    }
+
+    /**
+     * Declares the default value of the braid.command sub-permission nodes:
+     * granted to nobody by default, so the platform's operator/permission setup
+     * decides who may use the commands.
+     *
+     * @param event the permission registration event
+     */
+    @Subscribe
+    public void onRegisterPermissions(GeyserRegisterPermissionsEvent event) {
+        event.register("braid.command.status", TriState.NOT_SET);
+        event.register("braid.command.list", TriState.NOT_SET);
+        event.register("braid.command.legs", TriState.NOT_SET);
+        event.register("braid.command.advertise", TriState.NOT_SET);
+        event.register("braid.command.version", TriState.NOT_SET);
+    }
+
+    /**
+     * Builds one subcommand under the /braid root. The executor receives only
+     * the source; the subcommand carries no arguments.
+     */
+    private Command subCommand(String name, String description,
+                               org.geysermc.geyser.api.command.CommandExecutor<org.geysermc.geyser.api.command.CommandSource> executor) {
+        return Command.<org.geysermc.geyser.api.command.CommandSource>builder(this)
+                .source(org.geysermc.geyser.api.command.CommandSource.class)
+                .name(name)
+                .description(description)
+                .permission("braid.command." + name)
+                .executor(executor)
+                .build();
     }
 }

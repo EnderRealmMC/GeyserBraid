@@ -41,6 +41,46 @@ public final class BraidIntegrations {
     /** Upper bound on relay legs. Far above any normal server's concurrency; it caps hostile scanning. */
     private static final int MAX_LEGS = 1024;
 
+    /** The relay from the last successful assembly; null before or after a failure. */
+    private static volatile MediaRelay relay;
+    /** The advertised-address mirror from the last successful assembly; null when inactive. */
+    private static volatile AdvertisedMirror mirror;
+    /** Whether a full assembly has completed. */
+    private static volatile boolean assembled;
+    private static volatile int sharedPort;
+    private static volatile int webrtcPort;
+    private static volatile int signalingPort;
+
+    /** @return the relay from the last successful assembly, or null */
+    public static MediaRelay relay() {
+        return relay;
+    }
+
+    /** @return the advertised-address mirror, or null when inactive */
+    public static AdvertisedMirror mirror() {
+        return mirror;
+    }
+
+    /** @return true when a full assembly has completed */
+    public static boolean assembled() {
+        return assembled;
+    }
+
+    /** @return the shared public UDP port */
+    public static int sharedPort() {
+        return sharedPort;
+    }
+
+    /** @return the internal ICE port the relay legs target */
+    public static int webrtcPort() {
+        return webrtcPort;
+    }
+
+    /** @return the TCP signaling port */
+    public static int signalingPort() {
+        return signalingPort;
+    }
+
     private BraidIntegrations() {
     }
 
@@ -57,6 +97,10 @@ public final class BraidIntegrations {
         GeyserConfig.BedrockConfig bedrock = geyser.config().bedrock();
         int sharedPort = bedrock.port();
         int webrtcPort = bedrock.webrtcPort() == 0 ? sharedPort : bedrock.webrtcPort();
+        int signalingPort = bedrock.signaling().port();
+        BraidIntegrations.sharedPort = sharedPort;
+        BraidIntegrations.webrtcPort = webrtcPort;
+        BraidIntegrations.signalingPort = signalingPort;
 
         try {
             List<Channel> listeners = RakNetListenerAccess.listeners();
@@ -67,15 +111,17 @@ public final class BraidIntegrations {
             // Geyser's ICE socket stays bound on the Bedrock address at the webrtc-port;
             // a wildcard bind includes the loopback, so relay legs can reach it there
             InetSocketAddress mediaEndpoint = new InetSocketAddress(InetAddress.getLoopbackAddress(), webrtcPort);
-            MediaRelay relay = new MediaRelay(mediaEndpoint, MAX_LEGS);
-            listeners.forEach(relay::attach);
+            boolean proxyFraming = !geyser.config().advanced().bedrock().webrtcProxyProtocolRelays().isEmpty();
+            MediaRelay mediaRelay = new MediaRelay(mediaEndpoint, MAX_LEGS, proxyFraming);
+            listeners.forEach(mediaRelay::attach);
+            relay = mediaRelay;
 
             checkNetherNetSide(logger);
             if (bedrock.signaling().advertiseAddresses().isEmpty()) {
                 // Mirror the shared port onto Geyser's dynamic addresses (STUN discovery
                 // results, else the host's own interfaces) — zero configuration, works
                 // on public hosts, behind NAT and on LAN-only test setups alike
-                AdvertisedMirror.start(geyser, sharedPort);
+                mirror = AdvertisedMirror.start(geyser, sharedPort);
             } else {
                 logger.info(GeyserBraidExtension.LOG_PREFIX
                         + "\"advertise-addresses\" is set manually; the advertised-address mirror stays off.");
@@ -83,7 +129,11 @@ public final class BraidIntegrations {
 
             logger.info(GeyserBraidExtension.LOG_PREFIX + "Assembled: demultiplexer mounted on " + listeners.size()
                     + " listener channel(s) (UDP " + sharedPort + "), NetherNet media relayed to " + mediaEndpoint);
+            assembled = true;
         } catch (Exception e) {
+            assembled = false;
+            relay = null;
+            mirror = null;
             // A failed assembly leaves Geyser's original listeners untouched; the
             // transports keep working in the vanilla dual-port layout
             logger.severe(GeyserBraidExtension.LOG_PREFIX

@@ -69,6 +69,9 @@ public final class AdvertisedMirror {
     private final NetherNetServer server;
     private final NetherNetHTTPServerSignaling signaling;
     private final int sharedPort;
+    private final ScheduledExecutorService executor;
+    /** The advertised list from the last successful refresh pass. */
+    private volatile List<InetSocketAddress> lastAdvertised = List.of();
     /** Set once the first successful write happened, so the announcement is logged exactly once. */
     private volatile boolean announced;
 
@@ -78,6 +81,11 @@ public final class AdvertisedMirror {
         this.server = server;
         this.signaling = signaling;
         this.sharedPort = sharedPort;
+        this.executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "GeyserBraid-AdvertiseMirror");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     /**
@@ -87,9 +95,9 @@ public final class AdvertisedMirror {
      *
      * @param geyser     the Geyser instance, read for the signaling config
      * @param sharedPort the shared public UDP port candidates should carry
-     * @return the mirror's scheduled task, or null when the mirror is inactive
+     * @return the running mirror, or null when the mirror is inactive
      */
-    public static ScheduledFuture<?> start(GeyserImpl geyser, int sharedPort) {
+    public static AdvertisedMirror start(GeyserImpl geyser, int sharedPort) {
         GeyserLogger logger = geyser.getLogger();
         try {
             Object value = ReflectAccess.getField(GeyserImpl.getInstance(), "netherNetServer");
@@ -104,13 +112,9 @@ public final class AdvertisedMirror {
                 return null;
             }
             AdvertisedMirror mirror = new AdvertisedMirror(logger, server, builtin, sharedPort);
-            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "GeyserBraid-AdvertiseMirror");
-                thread.setDaemon(true);
-                return thread;
-            });
             // First pass shortly after assembly, then on the STUN refresh cadence
-            return executor.scheduleWithFixedDelay(mirror::refresh, 2, PERIOD_SECONDS, TimeUnit.SECONDS);
+            mirror.executor.scheduleWithFixedDelay(mirror::refresh, 2, PERIOD_SECONDS, TimeUnit.SECONDS);
+            return mirror;
         } catch (ReflectiveOperationException e) {
             logger.warning(GeyserBraidExtension.LOG_PREFIX
                     + "Could not start the advertised-address mirror: " + e.getMessage());
@@ -141,6 +145,7 @@ public final class AdvertisedMirror {
                 return;
             }
             ReflectAccess.setField(signaling, "advertisedAddresses", targets);
+            lastAdvertised = targets;
             if (!announced) {
                 announced = true;
                 logger.info(GeyserBraidExtension.LOG_PREFIX
@@ -150,6 +155,14 @@ public final class AdvertisedMirror {
             // Quiet by design: the next pass retries, and the first success logs loudly
             logger.debug(GeyserBraidExtension.LOG_PREFIX + "Advertised mirror pass failed: " + e);
         }
+    }
+
+    /**
+     * The advertised list currently written into the signaling instance — the
+     * shared port applied to the dynamic addresses of the last successful pass.
+     */
+    public List<InetSocketAddress> currentAdvertised() {
+        return lastAdvertised;
     }
 
     /**

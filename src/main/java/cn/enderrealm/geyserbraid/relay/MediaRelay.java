@@ -73,6 +73,8 @@ public final class MediaRelay {
 
     private final InetSocketAddress mediaEndpoint;
     private final int maxLegs;
+    /** Whether legs frame their datagrams with a PROXY protocol v2 header (frp/HAProxy-style front). */
+    private final boolean proxyFraming;
 
     private final LongAdder legsOpened = new LongAdder();
     private final LongAdder packetsIn = new LongAdder();
@@ -93,10 +95,15 @@ public final class MediaRelay {
     /**
      * @param mediaEndpoint the loopback address libjuice's ICE is bound on
      * @param maxLegs       the total number of legs allowed at once
+     * @param proxyFraming  whether legs prepend a PROXY protocol v2 header per
+     *                      datagram (requires the nethernet library to expect
+     *                      headers from this relay, via the
+     *                      {@code webrtc-proxy-protocol-relays} config)
      */
-    public MediaRelay(InetSocketAddress mediaEndpoint, int maxLegs) {
+    public MediaRelay(InetSocketAddress mediaEndpoint, int maxLegs, boolean proxyFraming) {
         this.mediaEndpoint = mediaEndpoint;
         this.maxLegs = maxLegs;
+        this.proxyFraming = proxyFraming;
     }
 
     /**
@@ -154,8 +161,27 @@ public final class MediaRelay {
      * @return an immutable snapshot of the relay counters
      */
     public RelaySnapshot snapshot() {
-        return new RelaySnapshot(legsByClient.size(), legsOpened.sum(), packetsIn.sum(), bytesIn.sum(),
-                packetsOut.sum(), bytesOut.sum(), rejectedUfrag.sum(), rejectedLimit.sum(), droppedNoLeg.sum());
+        return new RelaySnapshot(this.legsByClient.size(), this.legsOpened.sum(), this.packetsIn.sum(), this.bytesIn.sum(),
+                this.packetsOut.sum(), this.bytesOut.sum(), this.rejectedUfrag.sum(), this.rejectedLimit.sum(), this.droppedNoLeg.sum());
+    }
+
+    /** One relay leg as an operator sees it: who it serves and how fresh its traffic is. */
+    public record LegView(InetSocketAddress client, long idleSeconds, boolean ready) {
+    }
+
+    /**
+     * A view of every open leg, one entry per client. Safe from any thread: the
+     * underlying map is concurrent and each read is independent.
+     */
+    public List<LegView> legViews() {
+        long now = System.nanoTime();
+        List<LegView> views = new ArrayList<>(this.legsByClient.size());
+        for (Leg leg : this.legsByClient.values()) {
+            views.add(new LegView(leg.client,
+                    TimeUnit.NANOSECONDS.toSeconds(now - leg.lastActivityNanos),
+                    leg.channel.isActive()));
+        }
+        return views;
     }
 
     /**
@@ -218,6 +244,31 @@ public final class MediaRelay {
      *
      * @return the leg, or null when the relay is closing or a limit was hit
      */
+    /**
+     * PROXY protocol v2 header for one datagram from {@code client} toward the
+     * media endpoint: the nethernet library reads it to learn the real player
+     * address instead of the relay leg's loopback address. IPv4 only — the
+     * media socket is IPv4-bound, so IPv6 clients cannot arrive here.
+     */
+    private static byte[] proxyV2Header(InetSocketAddress client, InetSocketAddress target) {
+        byte[] header = new byte[28];
+        header[0] = 0x0D; header[1] = 0x0A; header[2] = 0x0D; header[3] = 0x0A;
+        header[4] = 0x00; header[5] = 0x0D; header[6] = 0x0A;
+        header[7] = 0x51; header[8] = 0x55; header[9] = 0x49; header[10] = 0x54; header[11] = 0x0A;
+        header[12] = 0x21;                   // version 2, command PROXY
+        header[13] = 0x12;                   // AF_INET, DGRAM
+        header[14] = 0x00; header[15] = 12;  // address section length
+        byte[] src = client.getAddress().getAddress();
+        byte[] dst = target.getAddress().getAddress();
+        System.arraycopy(src, src.length - 4, header, 16, 4);
+        System.arraycopy(dst, dst.length - 4, header, 20, 4);
+        header[24] = (byte) (client.getPort() >> 8);
+        header[25] = (byte) client.getPort();
+        header[26] = (byte) (target.getPort() >> 8);
+        header[27] = (byte) target.getPort();
+        return header;
+    }
+
     private Leg openLeg(Channel listener, InetSocketAddress client) {
         if (closed || legsByClient.size() >= maxLegs
                 || legsPerAddress.getOrDefault(client.getAddress(), 0) >= MAX_LEGS_PER_ADDRESS) {
@@ -225,6 +276,11 @@ public final class MediaRelay {
         }
 
         Leg leg = new Leg(this, listener, client);
+        if (proxyFraming) {
+            // The header is constant per leg: same client, same destination
+            leg.proxyHeaderBytes = proxyV2Header(leg.client,
+                    (InetSocketAddress) listener.localAddress());
+        }
         // The loopback may be ::1 under preferIPv6Addresses; the leg must match its family to bind/connect
         SocketProtocolFamily family = mediaEndpoint.getAddress() instanceof Inet6Address
                 ? SocketProtocolFamily.INET6 : SocketProtocolFamily.INET;

@@ -33,6 +33,8 @@ public final class Leg {
     final Channel listener;
     final InetSocketAddress client;
     Channel channel;
+    /** PROXY protocol v2 header prepended to every datagram toward libjuice; null when framing is off. */
+    byte[] proxyHeaderBytes;
     volatile long lastActivityNanos = System.nanoTime();
 
     private final MediaRelay relay;
@@ -67,7 +69,17 @@ public final class Leg {
             pending.add(payload);
             return;
         }
-        channel.write(payload);
+        channel.write(frame(payload));
+    }
+
+    /** Wraps the payload with the leg's PROXY v2 header when framing is enabled. */
+    private ByteBuf frame(ByteBuf payload) {
+        if (proxyHeaderBytes == null) {
+            return payload;
+        }
+        return io.netty.buffer.Unpooled.compositeBuffer(2)
+                .addComponent(true, io.netty.buffer.Unpooled.wrappedBuffer(proxyHeaderBytes))
+                .addComponent(true, payload);
     }
 
     /** Flushes the leg channel; a no-op while the leg is not ready yet. Called by the demultiplexer. */
@@ -84,7 +96,7 @@ public final class Leg {
     void ready() {
         ready = true;
         for (ByteBuf payload : pending) {
-            channel.write(payload);
+            channel.write(frame(payload));
         }
         pending.clear();
         channel.flush();
