@@ -277,8 +277,13 @@ public final class MediaRelay {
 
         Leg leg = new Leg(this, listener, client);
         if (proxyFraming) {
-            // The header is constant per leg: same client, same destination
-            leg.proxyHeaderBytes = proxyV2Header(leg.client,
+            // The header is constant per leg: same client, same destination.
+            // The embedded source is the player's real address — resolved through
+            // the RakNet PROXY mapping when a frp/HAProxy front is in play — so
+            // the nethernet library reports the player, not the relay front.
+            InetSocketAddress identity = (listener instanceof org.cloudburstmc.netty.channel.raknet.RakServerChannel rakServer)
+                    ? rakServer.getClientAddress(client) : client;
+            leg.proxyHeaderBytes = proxyV2Header(identity,
                     (InetSocketAddress) listener.localAddress());
         }
         // The loopback may be ::1 under preferIPv6Addresses; the leg must match its family to bind/connect
