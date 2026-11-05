@@ -7,7 +7,26 @@ semver. Formal releases are attached to `v*` tags (GitHub Release + Modrinth);
 
 ## [Unreleased]
 
-(none)
+### Added
+
+- Shutdown wiring: Geyser's shutdown event now tears down the relay and the
+  advertised-address mirror and resets the assembly state, so nothing keeps
+  ticking against the dead network stack and `/braid` reports honestly after
+  a plugin-level reload
+- The advertised-address mirror escalates to a warning after three failed
+  passes and logs recovery, so reflection breakage after a Geyser upgrade is
+  visible instead of silent
+- NetherNet relay legs from IPv6 sources are skipped up front (the relay is
+  IPv4-only, matching Geyser's default `0.0.0.0` bind): such clients fall back
+  to vanilla behavior — the ICE host candidates on the webrtc-port — while
+  RakNet traffic of any family stays untouched; `/braid status` reports the
+  skipped count
+
+### Fixed
+
+- PROXY media framing: a leg whose resolved identity or target is not IPv4 now
+  skips framing instead of emitting a corrupt AF_INET header carrying a
+  garbage address
 
 ## [0.1.0-rc.3] - 2026-11-05
 

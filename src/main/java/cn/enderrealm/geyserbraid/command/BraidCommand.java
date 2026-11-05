@@ -40,7 +40,7 @@ public final class BraidCommand {
     public static void status(CommandSource source) {
         MediaRelay relay = BraidIntegrations.relay();
         if (!BraidIntegrations.assembled() || relay == null) {
-            source.sendMessage("GeyserBraid is NOT assembled - check the startup log for the failure reason.");
+            source.sendMessage("GeyserBraid is NOT assembled (assembly failed or shut down) - check the startup log.");
             return;
         }
         RelaySnapshot snap = relay.snapshot();
@@ -53,7 +53,7 @@ public final class BraidCommand {
         source.sendMessage("  Media: " + snap.packetsIn() + " in / " + snap.packetsOut() + " out ("
                 + formatBytes(snap.bytesIn()) + " / " + formatBytes(snap.bytesOut()) + ")");
         source.sendMessage("  Rejected: " + snap.rejectedUfrag() + " bad ufrag, " + snap.rejectedLimit()
-                + " over limit, " + snap.droppedNoLeg() + " without a leg");
+                + " over limit, " + snap.droppedNoLeg() + " without a leg, " + snap.rejectedIpv6() + " IPv6 skipped");
     }
 
     /** Online players grouped by the transport they arrived on. */

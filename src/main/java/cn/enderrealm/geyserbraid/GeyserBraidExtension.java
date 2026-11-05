@@ -11,6 +11,7 @@ import org.geysermc.geyser.api.command.Command;
 import org.geysermc.geyser.api.event.lifecycle.GeyserDefineCommandsEvent;
 import org.geysermc.geyser.api.event.lifecycle.GeyserPostInitializeEvent;
 import org.geysermc.geyser.api.event.lifecycle.GeyserRegisterPermissionsEvent;
+import org.geysermc.geyser.api.event.lifecycle.GeyserShutdownEvent;
 import org.geysermc.geyser.api.extension.Extension;
 import org.geysermc.geyser.api.util.TriState;
 
@@ -76,6 +77,20 @@ public class GeyserBraidExtension implements Extension {
             return;
         }
         BraidIntegrations.install();
+    }
+
+    /**
+     * Invoked when Geyser shuts down: tears down the relay and the mirror and
+     * resets the assembly state, so nothing keeps ticking against the dead
+     * network stack and the commands report honestly afterwards. Geyser fires
+     * this after closing its own listeners, so the cleanup here is bookkeeping
+     * rather than racing live traffic.
+     *
+     * @param event the Geyser lifecycle event
+     */
+    @Subscribe
+    public void onShutdown(GeyserShutdownEvent event) {
+        BraidIntegrations.shutdown();
     }
 
     /**

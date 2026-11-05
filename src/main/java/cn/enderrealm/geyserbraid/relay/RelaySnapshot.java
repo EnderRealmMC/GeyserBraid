@@ -18,6 +18,7 @@ package cn.enderrealm.geyserbraid.relay;
  * @param rejectedUfrag  datagrams refused because their ufrag was unknown or expired
  * @param rejectedLimit  STUN requests refused because the leg limit was reached
  * @param droppedNoLeg   non-STUN datagrams dropped because the client had no leg
+ * @param rejectedIpv6   NetherNet datagrams skipped because the source was IPv6 (the relay is IPv4-only)
  */
 public record RelaySnapshot(
         long legs,
@@ -28,6 +29,7 @@ public record RelaySnapshot(
         long bytesOut,
         long rejectedUfrag,
         long rejectedLimit,
-        long droppedNoLeg
+        long droppedNoLeg,
+        long rejectedIpv6
 ) {
 }

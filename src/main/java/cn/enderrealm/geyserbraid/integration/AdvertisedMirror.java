@@ -64,6 +64,8 @@ public final class AdvertisedMirror {
     private static final long PERIOD_SECONDS = 10;
     /** Interface addresses kept per refresh; every candidate costs the client a connectivity check. */
     private static final int MAX_ADDRESSES = 4;
+    /** Failed passes in a row before a quiet failure escalates to a warning; passes run every {@value #PERIOD_SECONDS}s. */
+    private static final int FAILURE_WARN_THRESHOLD = 3;
 
     private final GeyserLogger logger;
     private final NetherNetServer server;
@@ -72,6 +74,8 @@ public final class AdvertisedMirror {
     private final ScheduledExecutorService executor;
     /** The advertised list from the last successful refresh pass. */
     private volatile List<InetSocketAddress> lastAdvertised = List.of();
+    /** Failed passes since the last successful reflection read; the mirror thread is the only writer. */
+    private int consecutiveFailures;
     /** Set once the first successful write happened, so the announcement is logged exactly once. */
     private volatile boolean announced;
 
@@ -141,6 +145,12 @@ public final class AdvertisedMirror {
                 return;
             }
             Object current = ReflectAccess.getField(signaling, "advertisedAddresses");
+            // The reflection read worked — the mirror is healthy; clear any failure streak
+            if (consecutiveFailures > 0) {
+                logger.info(GeyserBraidExtension.LOG_PREFIX
+                        + "Advertised mirror recovered after " + consecutiveFailures + " failed pass(es).");
+                consecutiveFailures = 0;
+            }
             if (targets.equals(current)) {
                 return;
             }
@@ -152,8 +162,18 @@ public final class AdvertisedMirror {
                         + "Advertising NetherNet candidates on the shared port: " + targets);
             }
         } catch (Exception e) {
-            // Quiet by design: the next pass retries, and the first success logs loudly
-            logger.debug(GeyserBraidExtension.LOG_PREFIX + "Advertised mirror pass failed: " + e);
+            consecutiveFailures++;
+            if (consecutiveFailures == FAILURE_WARN_THRESHOLD) {
+                // A persistent failure is the symptom of Geyser internals changing
+                // under the reflection; it used to be invisible outside /braid
+                logger.warning(GeyserBraidExtension.LOG_PREFIX
+                        + "Advertised mirror has failed " + consecutiveFailures + " passes in a row (last error: " + e
+                        + "). If this persists after a Geyser upgrade, the signaling internals have likely changed;"
+                        + " candidates then stop carrying the shared port.");
+            } else {
+                // Quiet by design: the next pass retries, and the first success logs loudly
+                logger.debug(GeyserBraidExtension.LOG_PREFIX + "Advertised mirror pass failed: " + e);
+            }
         }
     }
 
@@ -163,6 +183,14 @@ public final class AdvertisedMirror {
      */
     public List<InetSocketAddress> currentAdvertised() {
         return lastAdvertised;
+    }
+
+    /**
+     * Stops the mirror: cancels pending refresh passes and shuts its thread
+     * down. Called when the assembly is torn down on Geyser's shutdown event.
+     */
+    public void stop() {
+        executor.shutdownNow();
     }
 
     /**

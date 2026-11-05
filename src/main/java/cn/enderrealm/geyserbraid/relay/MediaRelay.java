@@ -26,6 +26,7 @@ import org.cloudburstmc.netty.handler.codec.raknet.server.RakProxyServerHandler;
 import org.geysermc.geyser.GeyserImpl;
 import org.geysermc.geyser.GeyserLogger;
 
+import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -84,6 +85,7 @@ public final class MediaRelay {
     private final LongAdder rejectedUfrag = new LongAdder();
     private final LongAdder rejectedLimit = new LongAdder();
     private final LongAdder droppedNoLeg = new LongAdder();
+    private final LongAdder rejectedIpv6 = new LongAdder();
 
     private final Map<InetSocketAddress, Leg> legsByClient = new ConcurrentHashMap<>();
     private final Map<Integer, Leg> legsByLocalPort = new ConcurrentHashMap<>();
@@ -91,6 +93,8 @@ public final class MediaRelay {
     private final List<Channel> listeners = new ArrayList<>();
     private volatile ScheduledFuture<?> sweepTask;
     private volatile boolean closed;
+    /** Warns once when a leg's PROXY framing is skipped over a non-IPv4 address; further skips stay debug. */
+    private volatile boolean warnedFramingSkip;
 
     /**
      * @param mediaEndpoint the loopback address libjuice's ICE is bound on
@@ -162,7 +166,8 @@ public final class MediaRelay {
      */
     public RelaySnapshot snapshot() {
         return new RelaySnapshot(this.legsByClient.size(), this.legsOpened.sum(), this.packetsIn.sum(), this.bytesIn.sum(),
-                this.packetsOut.sum(), this.bytesOut.sum(), this.rejectedUfrag.sum(), this.rejectedLimit.sum(), this.droppedNoLeg.sum());
+                this.packetsOut.sum(), this.bytesOut.sum(), this.rejectedUfrag.sum(), this.rejectedLimit.sum(),
+                this.droppedNoLeg.sum(), this.rejectedIpv6.sum());
     }
 
     /** One relay leg as an operator sees it: who it serves and how fresh its traffic is. */
@@ -192,6 +197,13 @@ public final class MediaRelay {
      * dropped when no leg exists yet (the STUN check always comes first on a
      * healthy flow).</p>
      *
+     * <p>The relay is IPv4-only, matching Geyser's default {@code 0.0.0.0} bind
+     * where IPv6 cannot arrive in the first place: datagrams from IPv6 sources
+     * (only possible when the operator rebinds Geyser onto {@code ::}) are
+     * skipped, leaving such clients with vanilla behavior — the ICE host
+     * candidates on the webrtc-port, reachable or not. RakNet traffic of any
+     * family never reaches this method.</p>
+     *
      * @param listener the listener the datagram arrived on (the new leg inherits its event loop)
      * @param client   the real client address
      * @param content  the datagram content (not released here; ownership stays with the caller)
@@ -200,6 +212,10 @@ public final class MediaRelay {
      */
     public void forward(Channel listener, InetSocketAddress client, ByteBuf content, PacketKind kind,
                         java.util.Set<Leg> touched) {
+        if (!(client.getAddress() instanceof Inet4Address)) {
+            rejectedIpv6.increment();
+            return;
+        }
         Leg leg = legsByClient.get(client);
         if (leg == null) {
             if (kind != PacketKind.STUN) {
@@ -248,7 +264,9 @@ public final class MediaRelay {
      * PROXY protocol v2 header for one datagram from {@code client} toward the
      * media endpoint: the nethernet library reads it to learn the real player
      * address instead of the relay leg's loopback address. IPv4 only — the
-     * media socket is IPv4-bound, so IPv6 clients cannot arrive here.
+     * header format is AF_INET, so {@link #openLeg} guarantees both endpoints
+     * are IPv4 (IPv6 clients never open legs; a non-IPv4 identity skips
+     * framing entirely rather than emitting a corrupt frame).
      */
     private static byte[] proxyV2Header(InetSocketAddress client, InetSocketAddress target) {
         byte[] header = new byte[28];
@@ -283,8 +301,22 @@ public final class MediaRelay {
             // the nethernet library reports the player, not the relay front.
             InetSocketAddress identity = (listener instanceof org.cloudburstmc.netty.channel.raknet.RakServerChannel rakServer)
                     ? rakServer.getClientAddress(client) : client;
-            leg.proxyHeaderBytes = proxyV2Header(identity,
-                    (InetSocketAddress) listener.localAddress());
+            InetSocketAddress target = (InetSocketAddress) listener.localAddress();
+            if (identity.getAddress() instanceof Inet4Address && target.getAddress() instanceof Inet4Address) {
+                leg.proxyHeaderBytes = proxyV2Header(identity, target);
+            } else {
+                // The header format is IPv4-only; a wrong-family source would be
+                // emitted as a corrupt AF_INET frame with a silently garbage
+                // address, so skip the framing instead and let the leg send raw
+                if (warnedFramingSkip) {
+                    logger().debug("GeyserBraid skipping PROXY framing for the leg of " + client
+                            + ": a non-IPv4 address is involved");
+                } else {
+                    warnedFramingSkip = true;
+                    logger().warning("GeyserBraid skipping PROXY framing for the leg of " + client
+                            + ": a non-IPv4 address is involved (the player's real address will not reach Geyser)");
+                }
+            }
         }
         // The loopback may be ::1 under preferIPv6Addresses; the leg must match its family to bind/connect
         SocketProtocolFamily family = mediaEndpoint.getAddress() instanceof Inet6Address

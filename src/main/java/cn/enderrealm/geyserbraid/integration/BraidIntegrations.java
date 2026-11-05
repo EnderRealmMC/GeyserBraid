@@ -143,6 +143,26 @@ public final class BraidIntegrations {
     }
 
     /**
+     * Tears down everything the assembly started: unmounts the demultiplexers
+     * and closes the relay legs, stops the advertised-address mirror, and
+     * resets the assembly state so the commands report honestly afterwards.
+     * Called on Geyser's shutdown event; safe to call when nothing assembled.
+     */
+    public static void shutdown() {
+        MediaRelay mediaRelay = relay;
+        relay = null;
+        if (mediaRelay != null) {
+            mediaRelay.shutdown();
+        }
+        AdvertisedMirror advertisedMirror = mirror;
+        mirror = null;
+        if (advertisedMirror != null) {
+            advertisedMirror.stop();
+        }
+        assembled = false;
+    }
+
+    /**
      * Non-fatal sanity check: warns when neither the built-in signaling channel
      * nor the NXS provider channel is active, since the relay would then have
      * nothing to forward to. Reflection is confined here and is allowed to fail
