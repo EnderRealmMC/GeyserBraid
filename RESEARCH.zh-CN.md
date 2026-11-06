@@ -131,14 +131,13 @@ ICE connected → SCTP connected → 玩家抵达 BungeeCord 登录处理器 →
 
 ### 未备案 DPI 拦截（域名加入失败，错误码 Terracotta）
 
-服务商对明文 HTTP 做深度包检测：`Host: mc.enderrealm.cn` 未备案 → 用拦截页
-替答。三类流量中只有内置信令是明文 HTTP（RakNet 是 UDP 二进制、MC Java 协议
-无 Host 头），因此只死信令。服务器日志佐证：拦截发生期间信令请求零到达。
+拦截的根因是域名未进行 ICP 备案：服务商对明文 HTTP 做深度包检测，
+`Host: mc.enderrealm.cn` 未备案 → 用拦截页替答。三类流量中只有内置信令是
+明文 HTTP（RakNet 是 UDP 二进制、MC Java 协议无 Host 头），因此只死信令。服务器日志佐证：拦截发生期间信令请求零到达。
 
 - **Terracotta** = 官方"未指定错误"，NetherNet 连接失败的通用兜底码，不含阶段
   信息（help.minecraft.net《Named Error Code Troubleshooting》）。
-- **规避**：裸 IP 加入可用（Host 拦截仅针对域名）；长期方案为备案域名或
-  HTTPS 信令（Geyser `builtin.https` 支持，证书建议 DNS-01 签发以绕开 80 端口）。
+- **规避**：裸 IP 加入可用（Host 拦截仅针对域名）；长期方案为完成 ICP 备案。
 - **可观测性**：Geyser `advanced.bedrock.nethernet-debug: true` 是定位此类问题
   的关键开关（信令请求、SDP 内容、ICE 全过程），排障时打开。
 
