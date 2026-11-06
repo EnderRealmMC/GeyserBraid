@@ -83,6 +83,20 @@ player appears under the frp client's address.
 | `relay` | Per-client loopback forwarding legs to the existing ICE socket, with idle sweeping and counters |
 | `integration` | Reflective wiring into Geyser internals (the `RaknetServer` listener channels), the advertised-address mirror, and startup sanity checks — the only package to revisit on a Geyser upgrade |
 
+## Operational notes
+
+- **The media relay is IPv4-only**, matching Geyser's default `0.0.0.0` bind:
+  NetherNet datagrams arriving from IPv6 sources (only possible when the
+  operator rebinds Geyser onto `::`) are skipped, leaving such clients with
+  vanilla behavior — the ICE host candidates on the webrtc-port. RakNet traffic
+  of any family passes untouched. `/braid status` reports the skipped count.
+- **iOS/iPadOS clients require HTTPS signaling.** They do not fall back to
+  plaintext HTTP — other platforms do, with a trust-on-first-use prompt — so
+  players on Apple devices cannot join a server whose built-in signaling serves
+  plain HTTP. Serve signaling over TLS: `builtin.https` with a certificate, or
+  a TLS reverse proxy in front of the signaling port (community-verified:
+  itzg/docker-minecraft-bedrock-server#680, Mojira BDS-23108).
+
 ## Requirements
 
 - Geyser **2.12.x** with `transport: both`

@@ -75,6 +75,17 @@ Geyser 原有的 IP 转发链带到 Java 端。不开 PROXY protocol 也能连�
 | `relay` | 每客户端回环转发 leg，指向现有 ICE socket，带空闲回收与计数 |
 | `integration` | 对 Geyser 内部的反射集成（`RaknetServer` 监听通道）、通告地址镜像、启动自检——升级 Geyser 时唯一需要跟进的包 |
 
+## 运维注意事项
+
+- **媒体中继仅 IPv4**，与 Geyser 默认的 `0.0.0.0` 绑定一致：来自 IPv6 来源的
+  NetherNet 报文（仅当运维把 Geyser 重绑到 `::` 时才可能出现）会被跳过，这类
+  客户端回退原生行为——webrtc-port 上的 ICE host 候选。RakNet 流量不受影响
+  （任意地址族照常放行）。`/braid status` 会显示跳过计数。
+- **iOS/iPadOS 客户端要求信令走 HTTPS。** 它们不会回退明文 HTTP——其他平台
+  会，并伴随首次信任弹窗——因此内置信令为明文 HTTP 时苹果设备玩家无法进入。
+  为信令启用 TLS：`builtin.https` 配证书，或在信令端口前加 TLS 反向代理
+  （社区实测：itzg/docker-minecraft-bedrock-server#680、Mojira BDS-23108）。
+
 ## 使用要求
 
 - Geyser **2.12.x**，`transport: both`
