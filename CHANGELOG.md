@@ -11,9 +11,6 @@ semver. Formal releases are attached to `v*` tags (GitHub Release + Modrinth);
 
 ## [0.1.0-rc.4] - 2026-11-06
 
-> Verification status: compile-verified only. The shutdown teardown, IPv6 skip
-> and mirror warning paths have not been exercised in a deployment yet.
-
 ### Added
 
 - Shutdown wiring: Geyser's shutdown event now tears down the relay and the
